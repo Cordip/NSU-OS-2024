@@ -6,7 +6,7 @@ import (
 	head "lab12/header"
 )
 
-func Parceline(a [1024]byte) int {
+func Parceline(a string) int {
 	return 666
 }
 

@@ -21,7 +21,7 @@ func main() {
 	// flag.Parse()
 
 	var i int
-	var line [1024]byte
+	var line string
 	var ncmds int
 	var prompt string
 

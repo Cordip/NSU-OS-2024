@@ -2,26 +2,30 @@ package promptline
 
 //"fmt"
 import (
+	"bufio"
 	"fmt"
 	head "lab12/header"
+	"io"
+	"os"
+	"syscall"
 )
 
-func Promptline(prompt string, line [1024]byte, sizline uintptr) int {
+func Promptline(prompt string, line string, sizline uintptr) int {
 	var n int = 0
 
 	in, out := bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout)
-	for {
-		c, err := in.ReadByte()
-		if err == io.EOF {
-			break
-		}
-		out.Write()// MAYBE WRITEBBYTER
-	}
 
-	fmt.WriteByte(prompt, strlen(prompt))
+	_, err := out.WriteString(prompt)
+	if err == io.EOF {
+		syscall.Exit(1)
+	}
 	
 	for {
-		n += 
+		a, err := in.ReadString()
+		if err == io.EOF {
+			syscall.Exit(1)
+		}
+		n += a
 	}
 	head.Infile = "asdfrmasd"
 	return 1
