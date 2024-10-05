@@ -1,15 +1,17 @@
 package parceline
 
-import (
-	"lab12/header"
-)
-
 //"fmt"
 
-func Parceline() string {
-	return "parcing"
+import (
+	head "lab12/header"
+)
+
+func Parceline(a [1024]byte) int {
+	return 666
 }
 
 func Change() {
-	header.Infile = "asdasdasd"
+	//shell.Infile = "asdasdasd"
+	//var a = 5
+	head.Infile = "asdasd"
 }

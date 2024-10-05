@@ -1,5 +1,7 @@
 package header
 
+//header
+
 const (
 	MAXARGS = 256
 	MAXCMDS = 50
