@@ -1,14 +1,14 @@
 package parceline
 
-//"fmt"
-
 import (
-	head "../header"
+	"fmt"
+
+	head "lab12/header"
 )
 
-
-func Parceline( line []byte) int {
-	return 666
+func Parceline(line []byte) int {
+	fmt.Println(line)
+	return 1
 }
 
 func Change() {
