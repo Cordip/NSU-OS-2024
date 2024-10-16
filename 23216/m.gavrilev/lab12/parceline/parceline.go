@@ -3,10 +3,11 @@ package parceline
 //"fmt"
 
 import (
-	head "lab12/header"
+	head "../header"
 )
 
-func Parceline(a string) int {
+
+func Parceline( line []byte) int {
 	return 666
 }
 
