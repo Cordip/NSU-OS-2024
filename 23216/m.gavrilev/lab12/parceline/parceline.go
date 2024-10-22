@@ -2,7 +2,6 @@ package parc
 
 import (
 	"bytes"
-	"fmt"
 	head "lab12/header"
 )
 
@@ -38,7 +37,6 @@ func Parceline(line []byte) int {
 	for i := 0; i < head.MAXCMDS; i++ {
 		head.Cmds[i].Cmdflag = 0
 	}
-	fmt.Println(line)
 	for line[i] != 0 {
 		i = blankskip(line, i)
 		if line[i] == 0 {
@@ -112,7 +110,7 @@ func Parceline(line []byte) int {
 			}
 			head.Cmds[ncmds].Cmdargs[nargs] = string(line[i : i+min(bytes.IndexAny(line[i:], delim), bytes.IndexByte(line[i:], delimbyte))])
 			nargs++
-			i = bytes.IndexAny(line[i:], delim)
+			i += bytes.IndexAny(line[i:], delim)
 			if i == -1 {
 				i = len(line) - 1
 			}

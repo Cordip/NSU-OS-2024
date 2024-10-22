@@ -1,7 +1,6 @@
 package promptline
 
 import (
-	"fmt"
 	"syscall"
 )
 
@@ -16,8 +15,6 @@ func Promptline(prompt []byte, line []byte, sizline int64) int64 {
 	for {
 		n, err := syscall.Read(0, tmpLine)
 		line = append(line[:len], tmpLine[:n]...)
-		fmt.Println(line)
-		fmt.Println(err)
 		if err != nil {
 			panic("Read Problem")
 		}
