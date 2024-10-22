@@ -1,14 +1,12 @@
 package header
 
-//header
-
 const (
 	MAXARGS = 256
 	MAXCMDS = 50
 )
 
 type Command struct {
-	Cmdargs [MAXARGS]string
+	Cmdargs []string
 	Cmdflag byte
 }
 
@@ -18,6 +16,6 @@ const (
 	INPIP  = 02
 )
 
-var Cmds []Command
+var Cmds []Command = make([]Command, MAXCMDS)
 var Infile, Outfile, Appfile string
-var Bkgrnd byte
+var Bkgrnd bool

@@ -5,12 +5,11 @@ import (
 	"syscall"
 )
 
-func Promptline(prompt string, line []byte, sizline int64) int64 {
+func Promptline(prompt []byte, line []byte, sizline int64) int64 {
 
 	var len int64 = 0
 	tmpLine := make([]byte, 1024)
-	hihi := []byte(prompt)
-	_, err := syscall.Write(1, hihi)
+	_, err := syscall.Write(1, prompt)
 	if err != nil {
 		panic("Write Problem")
 	}
@@ -29,7 +28,7 @@ func Promptline(prompt string, line []byte, sizline int64) int64 {
 			line[len-2] = ' '
 			continue
 		}
-
+		line[len-1] = 0
 		return (len)
 	}
 }
