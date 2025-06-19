@@ -25,10 +25,10 @@ const (
 )
 
 func init() {
-	log.SetFlags(0) // Убираем префиксы времени/даты из логов
+	log.SetFlags(0) // Убирает префиксы времени/даты из логов
 }
 
-// producer производит детали, имитируя задержку, и сигнализирует через семафор.
+// producer производит детали, имитируя задержку, и сигнализирует через канал.
 func producer(
 	partName string,
 	productionTime time.Duration,
@@ -42,12 +42,12 @@ func producer(
 		ticker.Stop()
 	}()
 
-	// log.Printf("[%s] Запущен", partName) // DEBUG
+	// log.Printf("[%s] Запущен", partName)
 
 	for {
 		select {
 		case <-ticker.C:
-			// log.Printf("[%s Producer] Деталь произведена...", partName) // DEBUG
+			// log.Printf("[%s Producer] Деталь произведена...", partName)
 			select {
 			case detailChan <- struct{}{}:
 				log.Printf("[%s Producer] -> Деталь отправлена.", partName)
@@ -62,15 +62,15 @@ func producer(
 	}
 }
 
-// moduleAssembler собирает модуль из деталей A и B, сигнализирует через семафор.
+// moduleAssembler собирает модуль из деталей A и B, сигнализирует через канал.
 func moduleAssembler(
 	id int,
-	semModule chan<- struct{},
+	moduleChan chan<- struct{},
 	ctx context.Context,
 	parentWG *sync.WaitGroup,
 ) {
 	assemblerName := fmt.Sprintf("Сборщик Модулей %d", id)
-	// log.Printf("[%s] Запущен", assemblerName) // Для отладки
+	// log.Printf("[%s] Запущен", assemblerName)
 	var wg sync.WaitGroup
 
 	defer func() {
@@ -97,16 +97,6 @@ func moduleAssembler(
 	haveA, haveB := false, false
 
 	for {
-
-		/*
-		var selectDetailAChan chan struct{}
-		if !haveA {
-			selectDetailAChan = detailAChan // Нужна деталь A
-		} else {
-			selectDetailAChan = nil // Деталь A уже есть, отключаем case
-		}
-		*/
-
 		select {
 		case <-ctx.Done():
 			log.Printf("[%s] Остановка...", assemblerName)
@@ -117,31 +107,32 @@ func moduleAssembler(
 				return
 			}
 			haveA = true
-			// log.Printf("[%s] Получена Деталь A", assemblerName) // DEBUG
+			// log.Printf("[%s] Получена Деталь A", assemblerName)
 		case _, ok := <-detailBChan:
 			if !ok {
 				log.Printf("[%s] ОШИБКА: Канал B закрыт!", assemblerName)
 				return
 			}
 			haveB = true
-			// log.Printf("[%s] Получена Деталь B", assemblerName) // DEBUG
-		}
-
-		if (haveA && haveB) {
-			select {
-			case <-ctx.Done():
-				log.Printf("[%s] Остановка...", assemblerName)
-				return
-			case semModule <- struct{}{}:
-				log.Printf("[%s] -> Модуль отправлен", assemblerName)
-				haveA, haveB = false, false
+			// log.Printf("[%s] Получена Деталь B", assemblerName)
+		default:
+			if haveA && haveB {
+				// log.Printf("[%s] Модуль готов к отправке", assemblerName)
+				// time.Sleep(5*time.Second)
+				select {
+				case <-ctx.Done():
+					log.Printf("[%s] Остановка...", assemblerName)
+					return
+				case moduleChan <- struct{}{}:
+					log.Printf("[%s] -> Модуль отправлен", assemblerName)
+					haveA, haveB = false, false
+				}
 			}
-		} 
+		}
 	}
 }
 
 // Собирает винтик из Модуля и детали C.
-// Также управляет счетчиком и инициирует остановку линии при достижении цели.
 func widgetAssembler(
 	id int,
 	widgetCounter *int64,
@@ -150,7 +141,7 @@ func widgetAssembler(
 ) {
 	assemblerName := fmt.Sprintf("Сборщик Винтиков %d", id)
 	var wg sync.WaitGroup
-	// log.Printf("[%s] Запущен", assemblerName) // Для отладки
+	// log.Printf("[%s] Запущен", assemblerName)
 
 	defer func() {
 		log.Printf("[%s] Ожидание остановки дочерних горутин...", assemblerName)
@@ -205,14 +196,14 @@ func widgetAssembler(
 func handleSignals(shutdownRequestChan chan<- os.Signal) {
 	osSignalChan := make(chan os.Signal, 1)
 	signal.Notify(osSignalChan, syscall.SIGINT, syscall.SIGTERM)
-	// log.Printf("[Обработчик Сигналов] Ожидание SIGINT/SIGTERM...") // DEBUG
+	// log.Printf("[Обработчик Сигналов] Ожидание SIGINT/SIGTERM...")
 
 	defer func() {
 		signal.Stop(osSignalChan)
 		close(shutdownRequestChan)
 		log.Println("[Обработчик сигналов] Завершил работу")
 	}()
-	
+
 	sig := <-osSignalChan
 	log.Printf("[Обработчик Сигналов] Получен сигнал (%s). Отправляю запрос на остановку в Main...", sig)
 
@@ -237,17 +228,15 @@ func main() {
 	shutdownRequestChan := make(chan os.Signal, 1)
 	go handleSignals(shutdownRequestChan)
 
-	// Запуск сборщиков винтиков
 	go widgetAssembler(1, &widgetCounter, ctx, doneChan)
 
 	sig := <-shutdownRequestChan
 	log.Printf("[Main] Получен запрос на остановку от обработчика сигналов (%s). Вызываю cancel().", sig)
 	cancel()
 
-	// Ожидание фактического завершения всех горутин
 	log.Println("[Main] Ожидание завершения контроллера...")
 	<-doneChan
 
-	log.Printf( "[Main] Производственная линия остановлена")
-	log.Printf( "[Main] Итого произведено винтиков: %d", atomic.LoadInt64(&widgetCounter))
+	log.Printf("[Main] Производственная линия остановлена")
+	log.Printf("[Main] Итого произведено винтиков: %d", atomic.LoadInt64(&widgetCounter))
 }
