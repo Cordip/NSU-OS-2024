@@ -179,19 +179,19 @@ func sorter(ctx context.Context, wg *sync.WaitGroup, id int, list *LinkedList, s
 	for {
 		select {
 		case <-ticker.C:
+			// fmt.Printf("[Sorter %d] Начинаю сортировку...\n", id)
+			// startTime := time.Now()
+			
+			list.Sort()
+
+			// duration := time.Since(startTime)
+			// fmt.Printf("[Sorter %d] Сортировка завершена за %v.\n", id, duration)
+
+			// fmt.Printf("[Sorter %d] Следующая сортировка через ~%v\n", id, sleepDuration)
 		case <-ctx.Done():
 			fmt.Printf("[Sorter %d] Завершаю работу...\n", id)
 			return
 		}
-		// fmt.Printf("[Sorter %d] Начинаю сортировку...\n", id)
-		// startTime := time.Now()
-		
-		list.Sort()
-
-		// duration := time.Since(startTime)
-		// fmt.Printf("[Sorter %d] Сортировка завершена за %v.\n", id, duration)
-
-		// fmt.Printf("[Sorter %d] Следующая сортировка через ~%v\n", id, sleepDuration)
 	}
 }
 
