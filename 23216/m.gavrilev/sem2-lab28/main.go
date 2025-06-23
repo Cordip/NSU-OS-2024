@@ -61,11 +61,6 @@ func main() {
 		defer wg.Done()
 		userInteractor(ctx, errChan, dataChan)
 	}()
-	go func() {
-		wg.Wait()
-		close(errChan)
-		resp.Body.Close()
-	}()
 
 	if finalErr := <-errChan; finalErr != nil {
 		cancel()
@@ -75,6 +70,9 @@ func main() {
 			log.Printf("critical error during interaction: %v", finalErr)
 		}
 	}
+
+	wg.Wait()
+	fmt.Fprintf(os.Stderr, "\n[Done]\n")
 }
 
 func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []byte) {
@@ -102,6 +100,7 @@ func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []by
 }
 
 func userInteractor(ctx context.Context, errChan chan<- error, dataChan <-chan []byte) {
+	defer close(errChan)
 	p := pager.New()
 	pipeReader, pipeWriter := io.Pipe()
 	defer pipeReader.Close()
