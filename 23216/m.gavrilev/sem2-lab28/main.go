@@ -53,9 +53,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go networkReader(ctx, resp.Body, dataChan, &wg)
-	go userInteractor(ctx, errChan, dataChan, &wg)
-
+	go func(){
+		defer wg.Done()
+		networkReader(ctx, resp.Body, dataChan)
+	}()
+	go func(){
+		defer wg.Done()
+		userInteractor(ctx, errChan, dataChan)
+	}()
 	go func() {
 		wg.Wait()
 		close(errChan)
@@ -72,8 +77,7 @@ func main() {
 	}
 }
 
-func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []byte, wg *sync.WaitGroup) {
-	defer wg.Done()
+func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []byte) {
 	defer close(dataChan)
 
 	buffer := make([]byte, networkBufferSize)
@@ -97,9 +101,7 @@ func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []by
 	}
 }
 
-func userInteractor(ctx context.Context, errChan chan<- error, dataChan <-chan []byte, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func userInteractor(ctx context.Context, errChan chan<- error, dataChan <-chan []byte) {
 	p := pager.New()
 	pipeReader, pipeWriter := io.Pipe()
 	defer pipeReader.Close()
