@@ -168,26 +168,15 @@ func (l *LinkedList) Sort() {
 	}
 }
 
-func sorter(ctx context.Context, wg *sync.WaitGroup, id int, list *LinkedList, sleepTime time.Duration) {
+func sorter(ctx context.Context, id int, list *LinkedList, sleepTime time.Duration) {
 	ticker := time.NewTicker(sleepTime)
-	defer func() {
-		ticker.Stop()
-		wg.Done()
-	}()
+	defer ticker.Stop()
 	fmt.Printf("[Sorter %d] Запущен и спит по %d (секунд).\n", id, sleepTime/time.Second)
 
 	for {
 		select {
 		case <-ticker.C:
-			// fmt.Printf("[Sorter %d] Начинаю сортировку...\n", id)
-			// startTime := time.Now()
-			
 			list.Sort()
-
-			// duration := time.Since(startTime)
-			// fmt.Printf("[Sorter %d] Сортировка завершена за %v.\n", id, duration)
-
-			// fmt.Printf("[Sorter %d] Следующая сортировка через ~%v\n", id, sleepDuration)
 		case <-ctx.Done():
 			fmt.Printf("[Sorter %d] Завершаю работу...\n", id)
 			return
@@ -208,7 +197,10 @@ func main() {
 		randomOffset := time.Duration(rand.Int63n(intervalRange))
 		sleepDuration := minSortInterval + randomOffset
 
-		go sorter(ctx, &wg, i, list, sleepDuration)
+		go func (i int, sleepDuration time.Duration) {
+			defer wg.Done()
+			sorter(ctx, i, list, sleepDuration)
+		}(i, sleepDuration)
 	}
 	fmt.Println("Сортировщики запущены.")
 	time.Sleep(100 * time.Millisecond)
