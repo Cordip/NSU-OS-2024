@@ -1,27 +1,55 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"time"
 )
+
+type CountingSemaphore struct {
+	mu    sync.Mutex
+	cond  *sync.Cond
+	count int
+}
+
+func NewCountingSemaphore() *CountingSemaphore {
+	s := &CountingSemaphore{}
+	s.cond = sync.NewCond(&s.mu)
+	return s
+}
+
+func (s *CountingSemaphore) Acquire() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for s.count == 0 {
+		s.cond.Wait()
+	}
+
+	s.count--
+	return nil
+}
+
+func (s *CountingSemaphore) Release() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.count++
+	s.cond.Signal()
+}
+
+func (s *CountingSemaphore) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
 
 // Конфигурация производственной линии
 const (
 	durationA = 1 * time.Second
 	durationB = 2 * time.Second
 	durationC = 3 * time.Second
-
-	numProducersA       = 2
-	numProducersB       = 1
-	numProducersC       = 3
-	numModuleAssemblers = 2
 )
 
 func init() {
@@ -30,222 +58,69 @@ func init() {
 
 // producer производит детали, имитируя задержку, и сигнализирует через канал.
 func producer(
-	ctx context.Context,
 	partName string,
 	productionTime time.Duration,
-	detailChan chan<- struct{},
+	detailSem *CountingSemaphore,
 ) {
 	ticker := time.NewTicker(productionTime)
 	defer ticker.Stop()
 
-	// log.Printf("[%s] Запущен", partName)
-
 	for {
-		select {
-		case <-ticker.C:
-			// log.Printf("[%s Producer] Деталь произведена...", partName)
-			select {
-			case detailChan <- struct{}{}:
-				log.Printf("[%s Producer] -> Деталь отправлена.", partName)
-			case <-ctx.Done():
-				log.Printf("[%s Producer] Остановка...", partName)
-				return
-			}
-		case <-ctx.Done():
-			log.Printf("[%s Producer] Остановка...", partName)
-			return
-		}
+		<-ticker.C
+		detailSem.Release()
+		log.Printf("[%s Producer] -> Деталь отправлена.", partName)
 	}
 }
 
 // moduleAssembler собирает модуль из деталей A и B, сигнализирует через канал.
 func moduleAssembler(
-	ctx context.Context,
-	id int,
-	moduleChan chan<- struct{},
+	moduleSem *CountingSemaphore,
 ) {
-	assemblerName := fmt.Sprintf("Сборщик Модулей %d", id)
-	// log.Printf("[%s] Запущен", assemblerName)
-	var wg sync.WaitGroup
+	assemblerName := fmt.Sprintf("Сборщик Модулей")
 
-	detailAChan := make(chan struct{})
-	detailBChan := make(chan struct{})
+	detailASem := NewCountingSemaphore()
+	detailBSem := NewCountingSemaphore()
 
-	for i := 0; i < numProducersA; i++ {
-		wg.Add(1)
-		partID := fmt.Sprintf("Деталь A-%d-%d", id, i+1)
-
-		go func (partID string) {
-			defer wg.Done()
-			producer(ctx, partID, durationA, detailAChan)
-		}(partID)
-	}
-
-	for i := 0; i < numProducersB; i++ {
-		wg.Add(1)
-		partID := fmt.Sprintf("Деталь B-%d-%d", id, i+1)
-
-		go func (partID string) {
-			defer wg.Done()
-			producer(ctx, partID, durationB, detailBChan)
-		}(partID)
-	}
-
-	go func() {
-		wg.Wait()
-		log.Printf("[%s] Остановлен.", assemblerName)
-	}()
-
-	haveA, haveB := false, false
+	go producer("Деталь А", durationA, detailASem)
+	go producer("Деталь B", durationB, detailBSem)
 
 	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[%s] Остановка...", assemblerName)
-			return
-		case _, ok := <-detailAChan:
-			if !ok {
-				log.Printf("[%s] ОШИБКА: Канал A закрыт!", assemblerName)
-				return
-			}
-			haveA = true
-			// log.Printf("[%s] Получена Деталь A", assemblerName)
-		case _, ok := <-detailBChan:
-			if !ok {
-				log.Printf("[%s] ОШИБКА: Канал B закрыт!", assemblerName)
-				return
-			}
-			haveB = true
-			// log.Printf("[%s] Получена Деталь B", assemblerName)
-		}
-
-		if haveA && haveB {
-			// log.Printf("[%s] Модуль готов к отправке", assemblerName)
-			// time.Sleep(5*time.Second)
-			select {
-			case <-ctx.Done():
-				log.Printf("[%s] Остановка...", assemblerName)
-				return
-			case moduleChan <- struct{}{}:
-				log.Printf("[%s] -> Модуль отправлен", assemblerName)
-				haveA, haveB = false, false
-			}
-		}
+		detailASem.Acquire()
+		detailBSem.Acquire()
+		moduleSem.Release()
+		log.Printf("[%s] -> Модуль отправлен", assemblerName)
 	}
 }
 
 // Собирает винтик из Модуля и детали C.
 func widgetAssembler(
-	ctx context.Context,
-	id int,
-	widgetCounter *int64,
-	doneChan chan struct{},
+	widgetCounter *CountingSemaphore,
 ) {
-	assemblerName := fmt.Sprintf("Сборщик Винтиков %d", id)
-	var wg sync.WaitGroup
-	// log.Printf("[%s] Запущен", assemblerName)
+	assemblerName := fmt.Sprintf("Сборщик Винтиков")
 
-	moduleChan := make(chan struct{})
-	detailCChan := make(chan struct{})
+	moduleCSem := NewCountingSemaphore()
+	detailSem := NewCountingSemaphore()
 
-	for i := 0; i < numProducersC; i++ {
-		wg.Add(1)
-		partID := fmt.Sprintf("Деталь C-%d-%d", id, i+1)
-
-		go func (partID string){
-			defer wg.Done()
-			producer(ctx, partID, durationC, detailCChan)
-		}(partID)
-	}
-
-	for i := 0; i < numModuleAssemblers; i++ {
-		wg.Add(1)
-
-		go func (i int){
-			defer wg.Done()
-			moduleAssembler(ctx, i+1, moduleChan)
-		}(i)
-	}
-
-	go func() {
-		wg.Wait()
-		log.Printf("[%s] Остановлен.", assemblerName)
-		doneChan <- struct{}{}
-	}()
-
-	haveModule, haveC := false, false
+	go producer("Деталь С", durationC, moduleCSem)
+	go moduleAssembler(detailSem)
 
 	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[%s] Остановка...", assemblerName)
-			return
-		case _, ok := <-moduleChan:
-			if !ok {
-				log.Printf("[%s] ОШИБКА: Канал модулей закрыт!", assemblerName)
-				return
-			}
-			haveModule = true
-		case _, ok := <-detailCChan:
-			if !ok {
-				log.Printf("[%s] ОШИБКА: Канал C закрыт!", assemblerName)
-				return
-			}
-			haveC = true
-		}
-
-		if haveModule && haveC {
-			newCount := atomic.AddInt64(widgetCounter, 1)
-			log.Printf("[%s] ===> Собран Винтик #%d", assemblerName, newCount)
-			haveModule, haveC = false, false
-		}
+		moduleCSem.Acquire()
+		detailSem.Acquire()
+		widgetCounter.Release()
+		newCount := widgetCounter.Count()
+		log.Printf("[%s] ===> Собран Винтик #%d", assemblerName, newCount)
 	}
-}
-
-func handleSignals(shutdownRequestChan chan<- os.Signal) {
-	osSignalChan := make(chan os.Signal, 1)
-	signal.Notify(osSignalChan, syscall.SIGINT, syscall.SIGTERM)
-	// log.Printf("[Обработчик Сигналов] Ожидание SIGINT/SIGTERM...")
-
-	defer func() {
-		signal.Stop(osSignalChan)
-		close(shutdownRequestChan)
-		log.Println("[Обработчик сигналов] Завершил работу")
-	}()
-
-	sig := <-osSignalChan
-	log.Printf("[Обработчик Сигналов] Получен сигнал (%s). Отправляю запрос на остановку в Main...", sig)
-
-	shutdownRequestChan <- sig
-	log.Println("[Обработчик Сигналов] Запрос на остановку успешно отправлен.")
 }
 
 func main() {
 	log.Printf("[Main] Запуск производственной линии...")
 	log.Printf("[Main] Параметры: A:%ds(%d), B:%ds(%d), C:%ds(%d), МодульСборщики:%d, ВинтикСборщики:1",
-		durationA/time.Second, numProducersA,
-		durationB/time.Second, numProducersB,
-		durationC/time.Second, numProducersC,
-		numModuleAssemblers)
+		durationA/time.Second, 1,
+		durationB/time.Second, 1,
+		durationC/time.Second, 1, 1)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	widgetCounter := NewCountingSemaphore()
 
-	var widgetCounter int64
-	doneChan := make(chan struct{})
-	defer close(doneChan)
-	shutdownRequestChan := make(chan os.Signal, 1)
-
-	go handleSignals(shutdownRequestChan)
-	go widgetAssembler(ctx, 1, &widgetCounter, doneChan)
-
-	sig := <-shutdownRequestChan
-	log.Printf("[Main] Получен запрос на остановку от обработчика сигналов (%s). Вызываю cancel().", sig)
-	cancel()
-
-	log.Println("[Main] Ожидание завершения сборщика винтиков...")
-	<-doneChan
-
-	log.Printf("[Main] Производственная линия остановлена")
-	log.Printf("[Main] Итого произведено винтиков: %d", atomic.LoadInt64(&widgetCounter))
+	widgetAssembler(widgetCounter)
 }
