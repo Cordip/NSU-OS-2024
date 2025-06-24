@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -56,7 +57,7 @@ func init() {
 	log.SetFlags(0) // Убирает префиксы времени/даты из логов
 }
 
-// producer производит детали, имитируя задержку, и сигнализирует через канал.
+// producer производит детали, имитируя задержку тикером
 func producer(
 	partName string,
 	productionTime time.Duration,
@@ -72,7 +73,7 @@ func producer(
 	}
 }
 
-// moduleAssembler собирает модуль из деталей A и B, сигнализирует через канал.
+// moduleAssembler собирает модуль из деталей A и B
 func moduleAssembler(
 	moduleSem *CountingSemaphore,
 ) {
@@ -94,7 +95,7 @@ func moduleAssembler(
 
 // Собирает винтик из Модуля и детали C.
 func widgetAssembler(
-	widgetCounter *CountingSemaphore,
+	widgetCounter *int64,
 ) {
 	assemblerName := fmt.Sprintf("Сборщик Винтиков")
 
@@ -107,20 +108,22 @@ func widgetAssembler(
 	for {
 		moduleCSem.Acquire()
 		detailSem.Acquire()
-		widgetCounter.Release()
-		newCount := widgetCounter.Count()
+		newCount := atomic.AddInt64(widgetCounter, 1)
 		log.Printf("[%s] ===> Собран Винтик #%d", assemblerName, newCount)
 	}
 }
 
 func main() {
-	log.Printf("[Main] Запуск производственной линии...")
-	log.Printf("[Main] Параметры: A:%ds(%d), B:%ds(%d), C:%ds(%d), МодульСборщики:%d, ВинтикСборщики:1",
-		durationA/time.Second, 1,
-		durationB/time.Second, 1,
-		durationC/time.Second, 1, 1)
+	log.Printf("[Main] Запуск производственной линии")
 
-	widgetCounter := NewCountingSemaphore()
+	var wg sync.WaitGroup
+	var widgetCounter int64
 
-	widgetAssembler(widgetCounter)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		widgetAssembler(&widgetCounter)
+	}()
+
+	wg.Wait()
 }
