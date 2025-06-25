@@ -53,8 +53,10 @@ func (p *Pager) Println(line string) error {
 }
 
 func (p *Pager) waitForInput() error {
-	fmt.Print(promptMessage)
-	defer fmt.Print(clearLine)
+	if terminal.IsTerminal(p.stdinFd) {
+		fmt.Print(promptMessage)
+		defer fmt.Print(clearLine)
+	}
 
 	initialState, err := terminal.MakeRaw(p.stdinFd)
 	if err != nil {

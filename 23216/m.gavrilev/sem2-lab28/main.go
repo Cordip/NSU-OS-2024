@@ -1,24 +1,24 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"sem2-lab28/myhttp"
-	"sem2-lab28/paginator"
+	pager "sem2-lab28/paginator"
+	"strings"
 	"sync"
-	"log"
 )
 
 const (
-	networkBufferSize   = 4096
-	errorResponseLimit  = 512
-	dataChannelBuffer   = 100
-	scannerMaxCapacity  = 1024 * 1024
+	networkBufferSize  = 4096
+	errorResponseLimit = 512
+	dataChannelBuffer  = 100
+	scannerMaxCapacity = 1024 * 1024
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 			resp.StatusCode, resp.Status, string(bodyBytes))
 	}
 
-	dataChan := make(chan []byte, dataChannelBuffer)
+	dataChan := make(chan []byte)
 	errChan := make(chan error, 1)
 
 	var wg sync.WaitGroup
@@ -53,11 +53,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func(){
+	go func() {
 		defer wg.Done()
 		networkReader(ctx, resp.Body, dataChan)
 	}()
-	go func(){
+	go func() {
 		defer wg.Done()
 		userInteractor(ctx, errChan, dataChan)
 	}()
@@ -102,36 +102,29 @@ func networkReader(ctx context.Context, body io.ReadCloser, dataChan chan<- []by
 func userInteractor(ctx context.Context, errChan chan<- error, dataChan <-chan []byte) {
 	defer close(errChan)
 	p := pager.New()
-	pipeReader, pipeWriter := io.Pipe()
-	defer pipeReader.Close()
+	lastToken := ""
 
-	go func() {
-		defer pipeWriter.Close()
-		for dataChunk := range dataChan {
-			if _, writeErr := pipeWriter.Write(dataChunk); writeErr != nil {
-				return
-			}
-		}
-	}()
-
-	scanner := bufio.NewScanner(pipeReader)
-	buf := make([]byte, bufio.MaxScanTokenSize)
-	scanner.Buffer(buf, scannerMaxCapacity)
-
-	for scanner.Scan() {
+	for dataChunk := range dataChan {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
+		tokens := strings.Split(string(dataChunk), "\n")
 
-		if err := p.Println(scanner.Text()); err != nil {
-			errChan <- err
-			return
+		if len(tokens) != 0 && lastToken != "" {
+			if err := p.Println(lastToken + tokens[0]); err != nil {
+				errChan <- err
+				return
+			}
 		}
-	}
 
-	if err := scanner.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		errChan <- fmt.Errorf("scanner error: %w", err)
+		for i := 0; i < len(tokens); i++ {
+			if err := p.Println(tokens[i]); err != nil {
+				errChan <- err
+				return
+			}
+		}
+		lastToken = tokens[len(tokens)-1]
 	}
 }
