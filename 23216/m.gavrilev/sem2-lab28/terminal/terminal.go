@@ -15,11 +15,11 @@ const (
 )
 
 func IsTerminal(fd int) bool {
+	// newfile is creating new pointer to file descriptor (not creating new file descriptors (os.Open does this))
 	file := os.NewFile(uintptr(fd), "stdin")
 	if file == nil {
 		return false
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
