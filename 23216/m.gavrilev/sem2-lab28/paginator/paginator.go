@@ -56,6 +56,9 @@ func (p *Pager) waitForInput() error {
 	if terminal.IsTerminal(p.stdinFd) {
 		fmt.Print(promptMessage)
 		defer fmt.Print(clearLine)
+	} else {
+		fmt.Fprint(os.Stderr, promptMessage)
+		defer fmt.Fprint(os.Stderr, clearLine)
 	}
 
 	initialState, err := terminal.MakeRaw(p.stdinFd)
