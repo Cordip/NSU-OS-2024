@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"os"
 	"syscall"
 	"unsafe"
 )
@@ -14,14 +15,18 @@ const (
 )
 
 func IsTerminal(fd int) bool {
-	var termios syscall.Termios
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		uintptr(fd),
-		uintptr(ioctl_TCGETS),
-		uintptr(unsafe.Pointer(&termios)),
-	)
-	return errno == 0
+	file := os.NewFile(uintptr(fd), "stdin")
+	if file == nil {
+		return false
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+
+	return (info.Mode() & os.ModeCharDevice) == os.ModeCharDevice
 }
 
 func MakeRaw(fd int) (State, error) {

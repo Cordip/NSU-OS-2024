@@ -28,17 +28,16 @@ type Pager struct {
 	linesPerPage int
 	isEnabled    bool
 	stdinFd      int
-	stdoutFd     int
 }
 
 func New() *Pager {
-	inFd := int(os.Stdin.Fd())
-	outFd := int(os.Stdin.Fd())
+	stdinFd := int(os.Stdin.Fd())
+	stdoutFd := int(os.Stdout.Fd())
+	isEnabled := terminal.IsTerminal(stdinFd) && terminal.IsTerminal(stdoutFd)
 	return &Pager{
 		linesPerPage: defaultLinesPerPage,
-		isEnabled:    terminal.IsTerminal(outFd),
-		stdinFd:      inFd,
-		stdoutFd:     outFd,
+		isEnabled:    isEnabled,
+		stdinFd:      stdinFd,
 	}
 }
 
